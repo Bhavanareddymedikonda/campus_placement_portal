@@ -1,7 +1,18 @@
 import axios from 'axios';
 
+// Use environment variable for API base URL
+// In production: https://campus-placement-portal-fwbo.onrender.com/api
+// In development: /api (proxied to localhost:5000 via vite.config.js)
+const getBaseURL = () => {
+  if (import.meta.env.VITE_API_URL) {
+    return `${import.meta.env.VITE_API_URL}/api`;
+  }
+  // Fallback for development
+  return '/api';
+};
+
 const API = axios.create({
-  baseURL: '/api',
+  baseURL: getBaseURL(),
   headers: { 'Content-Type': 'application/json' },
 });
 

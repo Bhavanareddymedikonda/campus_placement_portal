@@ -5,6 +5,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+    // Development proxy - routes requests to local backend
     proxy: {
       '/api': {
         target: 'http://localhost:5000',
@@ -15,5 +16,9 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+  },
+  // Environment variable configuration
+  define: {
+    'import.meta.env.VITE_API_URL': JSON.stringify(process.env.VITE_API_URL || ''),
   },
 })
