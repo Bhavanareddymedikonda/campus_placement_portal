@@ -22,35 +22,43 @@ connectDB();
 
 const app = express();
 
-// CORS Configuration
+// CORS Configuration - Restricted to production frontend
 const corsOptions = {
-  // Allow requests from:
-  // 1. Local development
-  // 2. Vercel deployments (your Vercel domain)
-  // 3. Render frontend (if deployed on Render)
   origin: (origin, callback) => {
     const allowedOrigins = [
-      'http://localhost:5173', // Vite dev server
-      'http://localhost:3000', // Alternative React port
+      // Production - Vercel Frontend
+      'https://campus-placement-portal-iota.vercel.app',
+      // Development - Local
+      'http://localhost:5173',
+      'http://localhost:3000',
       'http://127.0.0.1:5173',
       'http://127.0.0.1:3000',
-      // Add your Vercel domain here when deployed
-      // Example: 'https://your-project.vercel.app'
     ];
     
-    // Allow requests with no origin (like mobile apps or curl requests)
+    // Allow requests with no origin (mobile apps, curl, server-to-server)
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      console.warn(`⚠️  CORS blocked request from origin: ${origin}`);
+      callback(new Error('CORS policy: Origin not allowed'));
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization'],
+  maxAge: 86400, // 24 hours
 };
 
 app.use(cors(corsOptions));
+
+// Security headers
+app.use((req, res, next) => {
+  res.header('X-Content-Type-Options', 'nosniff');
+  res.header('X-Frame-Options', 'DENY');
+  res.header('X-XSS-Protection', '1; mode=block');
+  res.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  next();
+});
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
@@ -74,19 +82,60 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Placement Portal API is running' });
 });
 
-// Global error handler
+// Global error handler - Production ready
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(err.statusCode || 500).json({
+  const isDevelopment = process.env.NODE_ENV === 'development';
+  
+  console.error(`❌ Error: ${err.message}`);
+  if (isDevelopment) {
+    console.error(err.stack);
+  }
+
+  // Handle specific error types
+  if (err.name === 'ValidationError') {
+    return res.status(400).json({
+      success: false,
+      message: 'Validation Error',
+      ...(isDevelopment && { errors: err.errors }),
+    });
+  }
+
+  if (err.name === 'CastError') {
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid ID format',
+      ...(isDevelopment && { details: err.message }),
+    });
+  }
+
+  if (err.name === 'MongoError' || err.name === 'MongoServerError') {
+    return res.status(500).json({
+      success: false,
+      message: 'Database Error',
+      ...(isDevelopment && { details: err.message }),
+    });
+  }
+
+  // Default error response
+  const statusCode = err.statusCode || err.status || 500;
+  res.status(statusCode).json({
     success: false,
-    message: err.message || 'Internal Server Error',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
+    message: isDevelopment ? err.message : 'Internal Server Error',
+    ...(isDevelopment && { 
+      stack: err.stack,
+      details: err,
+    }),
   });
 });
 
 // 404 handler
 app.use((req, res) => {
-  res.status(404).json({ success: false, message: 'Route not found' });
+  res.status(404).json({ 
+    success: false, 
+    message: 'Route not found',
+    path: req.path,
+    method: req.method,
+  });
 });
 
 const PORT = process.env.PORT || 5000;
